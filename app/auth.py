@@ -1,12 +1,32 @@
 """Admin 认证模块 — HTTP Basic Auth"""
 
 import secrets
+from collections.abc import Mapping
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBasic, HTTPBasicCredentials
 
 from app.config import config_manager
 
 security = HTTPBasic()
+
+
+def extract_api_key(headers: Mapping[str, str]) -> str:
+    """Read an OpenAI-style Bearer token or Anthropic-style x-api-key header."""
+    x_api_key = headers.get("x-api-key", "").strip()
+    if x_api_key:
+        return x_api_key
+
+    scheme, _, token = headers.get("authorization", "").partition(" ")
+    if scheme.lower() == "bearer":
+        return token.strip()
+    return ""
+
+
+def verify_api_key(provided_key: str, expected_key: str) -> bool:
+    """Compare API keys without leaking partial-match timing information."""
+    return bool(provided_key and expected_key) and secrets.compare_digest(
+        provided_key.encode("utf-8"), expected_key.encode("utf-8")
+    )
 
 
 def verify_admin(credentials: HTTPBasicCredentials = Depends(security)):

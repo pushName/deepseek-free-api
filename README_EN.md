@@ -193,10 +193,22 @@ The system automatically completes: login to get Token → create chat Session �
 
 ## API Usage
 
+### Authentication
+
+Generate or save an API key in the **API Config** section at `http://localhost:8000/admin`. Every `/v1/*` request must provide it through an OpenAI Bearer token or Anthropic `x-api-key` header:
+
+```bash
+curl http://localhost:8000/v1/models \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+When no key is configured, the service rejects all `/v1/*` requests. Do not commit the key or expose it in public logs.
+
 ### 1. List Models
 
 ```bash
-curl http://localhost:8000/v1/models
+curl http://localhost:8000/v1/models \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 Returns all dynamically discovered models with `max_input_tokens`, `max_output_tokens`, and other details.
@@ -205,6 +217,7 @@ Returns all dynamically discovered models with `max_input_tokens`, `max_output_t
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "deepseek-default",
@@ -218,6 +231,7 @@ curl http://localhost:8000/v1/chat/completions \
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "deepseek-reasoner",
@@ -359,7 +373,7 @@ This proxy is fully compatible with the **Anthropic Messages API** format, suppo
 ```bash
 # x-api-key method (recommended)
 curl http://localhost:8000/v1/messages \
-  -H "x-api-key: sk-dsapi" \
+  -H "x-api-key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "deepseek-default",
@@ -374,7 +388,7 @@ curl http://localhost:8000/v1/messages \
 
 ```bash
 curl http://localhost:8000/v1/messages \
-  -H "x-api-key: sk-dsapi" \
+  -H "x-api-key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "deepseek-reasoner",
@@ -423,7 +437,7 @@ Also supports Claude 4.x legacy names (`claude-sonnet-4-5`, `claude-opus-4-1`, e
 ```bash
 # Claude model names work too
 curl http://localhost:8000/v1/messages \
-  -H "x-api-key: sk-dsapi" \
+  -H "x-api-key: YOUR_API_KEY" \
   -d '{"model":"claude-sonnet-4-6","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}'
 ```
 
@@ -619,7 +633,7 @@ curl http://localhost:8000/health
 | Address | Description |
 |---------|-------------|
 | `http://localhost:8000/admin` | Web admin panel (login config) |
-| `http://localhost:8000/v1` | OpenAI compatible API root |
+| `http://localhost:8000/v1` | OpenAI compatible API root (API key required) |
 | `http://localhost:8000/health` | Health check endpoint |
 
 ## Project Structure
@@ -691,6 +705,8 @@ Full `token.json` configuration:
 
 **Environment variable:** `PROXY_PORT` — listening port (default `8000`)
 
+**API key:** Generate or set it in the **API Config** section at `/admin`. The key is stored locally in `config.json`, which is ignored by Git.
+
 ## Dependencies
 
 ### Python (pip)
@@ -743,7 +759,7 @@ A: If configured via **account password login**, the proxy auto-relogins and ref
 A: Usually caused by expired Token or Session. DeepSeek silently downgrades requests to the default model when credentials are invalid. Solution: **re-login** with phone/email on the admin panel at `http://localhost:8000/admin` — the login will auto-refresh both Token and Session.
 
 **Q: Can this be deployed on a public server?**
-A: Yes, but recommend using Nginx reverse proxy + HTTPS + IP whitelist. API Key is not validated (any value works), so access control should be handled through other means.
+A: Yes, but recommend using Nginx reverse proxy + HTTPS + IP whitelist. Set a strong API key for `/v1/*` and keep it private.
 
 ## License & Credits
 

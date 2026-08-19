@@ -57,6 +57,7 @@ class ConfigManager:
         self._proxy_url: str = ""
         self._passthrough: bool = False
         self._admin_password: str = "admin"
+        self._api_key: str = ""
         self.load()
 
     def _migrate_legacy(self):
@@ -125,6 +126,7 @@ class ConfigManager:
                 self._proxy_url = data.get('proxy', '') or ''
                 self._passthrough = data.get('passthrough', False)
                 self._admin_password = data.get('admin_password', 'admin')
+                self._api_key = data.get('api_key', '') or ''
         except Exception as e:
             print(f"[Config] 加载配置失败: {e}")
             self.accounts = []
@@ -139,6 +141,7 @@ class ConfigManager:
                     "proxy": self._proxy_url or "",
                     "passthrough": self._passthrough,
                     "admin_password": self._admin_password,
+                    "api_key": self._api_key,
                 }
                 with open(self.config_file, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
@@ -245,6 +248,17 @@ class ConfigManager:
         """设置管理员密码。"""
         with self.lock:
             self._admin_password = password or "admin"
+            self.save()
+
+    def get_api_key(self) -> str:
+        """获取外部 OpenAI/Anthropic API 的访问密钥。"""
+        with self.lock:
+            return self._api_key
+
+    def set_api_key(self, api_key: str):
+        """设置外部 API 访问密钥。空值表示未配置，接口将拒绝所有 /v1 请求。"""
+        with self.lock:
+            self._api_key = (api_key or "").strip()
             self.save()
 
     def get_token(self, label: str) -> str:

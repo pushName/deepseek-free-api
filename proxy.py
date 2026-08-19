@@ -48,7 +48,7 @@ CONFIG_FILE = BASE_DIR / "config.json"
 
 # 多账号管理
 from app.config import config_manager, DsAccount
-from app.auth import verify_admin
+from app.auth import extract_api_key, verify_admin, verify_api_key
 VISION_LOG = BASE_DIR / "vision.log"
 _DEBUG = os.getenv("DS_DEBUG", "").lower() in ("1", "true", "yes")
 
@@ -1496,14 +1496,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ── 修复 /v1/v1/ 双前缀（Claude Code CLI 等客户端 base URL 带 /v1）──
+# ── 修复 /v1/v1/ 双前缀并保护外部 API ─────────────────────
 @app.middleware("http")
-async def _rewrite_double_v1(request: Request, call_next):
+async def _authenticate_v1_api(request: Request, call_next):
     path = request.scope.get("path", "")
     if path.startswith("/v1/v1/"):
         request.scope["path"] = path[3:]
     elif path == "/v1/v1":
         request.scope["path"] = "/v1"
+
+    path = request.scope.get("path", "")
+    if request.method == "OPTIONS" or not (path == "/v1" or path.startswith("/v1/")):
+        return await call_next(request)
+
+    expected_key = config_manager.get_api_key()
+    if not expected_key:
+        return JSONResponse(
+            status_code=503,
+            content={"error": {
+                "message": "API key is not configured. Set one in /admin before using /v1.",
+                "type": "server_error",
+                "code": "api_key_not_configured",
+            }},
+        )
+    if not verify_api_key(extract_api_key(request.headers), expected_key):
+        return JSONResponse(
+            status_code=401,
+            content={"error": {
+                "message": "Incorrect API key provided.",
+                "type": "invalid_request_error",
+                "code": "invalid_api_key",
+            }},
+            headers={"WWW-Authenticate": "Bearer"},
+        )
     return await call_next(request)
 
 from app.anthropic_routes import router as _anthropic_router
@@ -1651,7 +1676,7 @@ a{color:#7dd3fc}
 <div class="sl" style="font-weight:600;color:#e2e8f0;" data-i18n="apiConfig">API 配置</div>
 <div class="cfg">
 <div class="cr"><span data-i18n="apiAddr">API 地址</span><code onclick="cp(this)">http://localhost:""" + str(PROXY_PORT) + """/v1</code></div>
-<div class="cr"><span data-i18n="apiKey">API Key</span><code onclick="cp(this)" data-i18n="apiKeyVal">任意填写</code></div>
+<div class="cr" style="align-items:flex-start"><span data-i18n="apiKey">API Key</span><div style="flex:1;min-width:0"><input id="apiKey" type="password" autocomplete="off" spellcheck="false" style="width:100%;background:#0f172a;border:1px solid #334155;border-radius:8px;color:#e2e8f0;padding:9px 10px;font-family:monospace;font-size:12px"><div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap"><button class="btn bp" style="font-size:12px;padding:7px 10px" onclick="saveApiKey()" data-i18n="apiKeySave">保存 Key</button><button class="btn" style="background:#334155;color:#e2e8f0;font-size:12px;padding:7px 10px" onclick="generateApiKey()" data-i18n="apiKeyGenerate">生成新 Key</button><button class="btn" style="background:#334155;color:#e2e8f0;font-size:12px;padding:7px 10px" onclick="toggleApiKeyVisibility()" id="apiKeyToggle" data-i18n="apiKeyShow">显示</button><button class="btn" style="background:#334155;color:#e2e8f0;font-size:12px;padding:7px 10px" onclick="copyApiKey()" data-i18n="apiKeyCopy">复制</button></div><div id="apiKeyStatus" style="margin-top:7px;font-size:12px;color:#64748b"></div></div></div>
 
 </div>
 </div>
@@ -1726,7 +1751,7 @@ emailPlaceholder:'邮箱地址',waitingCfg:'等待配置',configured:'已配置'
 loggingDS:'正在登录 DeepSeek...',loginOk:'登录成功',loginFail:'失败:',
 error:'错误:',saveCurlBtn:'保存 cURL',
 parsing:'解析中...',saved:'已保存',apiConfig:'API 配置',apiAddr:'API 地址',
-apiKey:'API Key',apiKeyVal:'任意填写',refreshModels:'🔄 刷新模型列表',
+apiKey:'API Key',apiKeySave:'保存 Key',apiKeyGenerate:'生成新 Key',apiKeyShow:'显示',apiKeyHide:'隐藏',apiKeyCopy:'复制',apiKeySaved:'API Key 已保存',apiKeyGenerated:'已生成新 API Key',apiKeyEmpty:'API Key 不能为空',apiKeyLoadFail:'API Key 加载失败: ',apiKeySaveFail:'保存失败: ',refreshModels:'🔄 刷新模型列表',
 refreshingModels:'刷新中...',foundModels:'✅ 发现',foundModelsSuffix:'个模型:',
 refreshOk:'刷新成功',refreshFail:'刷新失败',
 periodAll:'全部',periodWeek:'本周',periodToday:'今日',refreshBtn:'刷新',clearBtn:'清空',
@@ -1760,7 +1785,7 @@ emailPlaceholder:'Email Address',waitingCfg:'Awaiting Config',configured:'Config
 loggingDS:'Logging into DeepSeek...',loginOk:'Login Successful',loginFail:'Failed:',
 error:'Error:',saveCurlBtn:'Save cURL',
 parsing:'Parsing...',saved:'Saved',apiConfig:'API Config',apiAddr:'API Endpoint',
-apiKey:'API Key',apiKeyVal:'Any value',refreshModels:'🔄 Refresh Models',
+apiKey:'API Key',apiKeySave:'Save Key',apiKeyGenerate:'Generate New Key',apiKeyShow:'Show',apiKeyHide:'Hide',apiKeyCopy:'Copy',apiKeySaved:'API key saved',apiKeyGenerated:'New API key generated',apiKeyEmpty:'API key cannot be empty',apiKeyLoadFail:'API key load failed: ',apiKeySaveFail:'Save failed: ',refreshModels:'🔄 Refresh Models',
 refreshingModels:'Refreshing...',foundModels:'✅ Found',foundModelsSuffix:'model(s):',
 refreshOk:'Refreshed',refreshFail:'Refresh Failed',
 periodAll:'All',periodWeek:'This Week',periodToday:'Today',refreshBtn:'Refresh',clearBtn:'Clear',
@@ -1801,7 +1826,7 @@ for(var i=0;i<4&&i<tabs.length;i++){if(tabs[i]!==Q('langBtn'))tabs[i].textConten
 loadUsage();loadAccounts();cs();
 }
 function Qs(s){return document.querySelectorAll(s)}
-document.addEventListener('DOMContentLoaded',function(){Q('langBtn').textContent=_lang==='zh'?'🌐 EN':'🌐 中';applyI18n()});
+document.addEventListener('DOMContentLoaded',function(){Q('langBtn').textContent=_lang==='zh'?'🌐 EN':'🌐 中';applyI18n();loadApiKey()});
 function Q(id){return document.getElementById(id)}
 function switchTab(type){
 var ti={'phone':0,'email':1,'usage':2,'accounts':3,'settings':4};
@@ -1822,6 +1847,19 @@ if(d.configured){Q('s').className='s ok';Q('sd').className='d dg';Q('st').textCo
 else{Q('s').className='s no';Q('sd').className='d dy';Q('st').textContent=d.error||_('waitingCfg')}
 }catch(e){Q('s').className='s err';Q('st').textContent=_('connFail')}
 }
+async function loadApiKey(){
+try{const r=await fetch('/api/api-key');const d=await r.json();if(!r.ok)throw new Error(d.detail||r.status);Q('apiKey').value=d.api_key||'';Q('apiKeyStatus').textContent=d.api_key?'':_('apiKeyEmpty')}catch(e){Q('apiKeyStatus').textContent=_('apiKeyLoadFail')+e.message;Q('apiKeyStatus').style.color='#fca5a5'}
+}
+async function saveApiKey(){
+const key=Q('apiKey').value.trim();const status=Q('apiKeyStatus');
+if(!key){status.textContent=_('apiKeyEmpty');status.style.color='#fca5a5';return}
+try{const r=await fetch('/api/api-key',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({api_key:key})});const d=await r.json();if(!r.ok)throw new Error(d.detail||r.status);status.textContent=_('apiKeySaved');status.style.color='#22c55e';t(_('apiKeySaved'))}catch(e){status.textContent=_('apiKeySaveFail')+e.message;status.style.color='#fca5a5';t(_('apiKeySaveFail')+e.message,1)}
+}
+async function generateApiKey(){
+try{const r=await fetch('/api/api-key/generate',{method:'POST'});const d=await r.json();if(!r.ok)throw new Error(d.detail||r.status);Q('apiKey').value=d.api_key;Q('apiKeyStatus').textContent=_('apiKeyGenerated');Q('apiKeyStatus').style.color='#22c55e';t(_('apiKeyGenerated'))}catch(e){Q('apiKeyStatus').textContent=_('apiKeySaveFail')+e.message;Q('apiKeyStatus').style.color='#fca5a5'}
+}
+function copyApiKey(){navigator.clipboard.writeText(Q('apiKey').value);t(_('apiKeyCopy'))}
+function toggleApiKeyVisibility(){var key=Q('apiKey');var shown=key.type==='text';key.type=shown?'password':'text';Q('apiKeyToggle').textContent=_(shown?'apiKeyShow':'apiKeyHide')}
 async function doLogin(type){
 let body={}
 if(type==='phone'){
@@ -2097,6 +2135,28 @@ async def save_config(data: dict, creds: HTTPBasicCredentials = Depends(verify_a
     config_manager.add_account(ds_account)
     t = cfg["token"]
     return {"ok": True, "masked": t[:20] + "..." + t[-8:], "session_id": cfg["session_id"], "account_label": account_label}
+
+
+@app.get("/api/api-key")
+async def get_api_key(creds: HTTPBasicCredentials = Depends(verify_admin)):
+    """Return the configured external API key to the authenticated admin page."""
+    return {"api_key": config_manager.get_api_key()}
+
+
+@app.put("/api/api-key")
+async def set_api_key(data: dict, creds: HTTPBasicCredentials = Depends(verify_admin)):
+    api_key = str(data.get("api_key", "")).strip()
+    if not api_key:
+        raise HTTPException(400, "API Key 不能为空")
+    config_manager.set_api_key(api_key)
+    return {"ok": True}
+
+
+@app.post("/api/api-key/generate")
+async def generate_api_key(creds: HTTPBasicCredentials = Depends(verify_admin)):
+    api_key = f"sk-dsapi-{secrets.token_urlsafe(32)}"
+    config_manager.set_api_key(api_key)
+    return {"api_key": api_key}
 
 
 # ── DeepSeek 登录 API ─────────────────────────────────────

@@ -185,10 +185,22 @@ python3 proxy.py
 
 ## API 使用
 
+### 认证
+
+在 `http://localhost:8000/admin` 的 **API 配置** 区域生成或保存 API Key。所有 `/v1/*` 请求必须携带该 Key，支持 OpenAI 的 Bearer 头和 Anthropic 的 `x-api-key` 头：
+
+```bash
+curl http://localhost:8000/v1/models \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+未配置 Key 时，服务会拒绝 `/v1/*` 请求；不要将 Key 提交到代码仓库或公开日志中。
+
 ### 1. 列出模型
 
 ```bash
-curl http://localhost:8000/v1/models
+curl http://localhost:8000/v1/models \
+  -H "Authorization: Bearer YOUR_API_KEY"
 ```
 
 返回动态探测到的所有可用模型，包含 `max_input_tokens`、`max_output_tokens` 等详细信息。
@@ -197,6 +209,7 @@ curl http://localhost:8000/v1/models
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "deepseek-default",
@@ -210,6 +223,7 @@ curl http://localhost:8000/v1/chat/completions \
 
 ```bash
 curl http://localhost:8000/v1/chat/completions \
+  -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "deepseek-reasoner",
@@ -351,7 +365,7 @@ curl http://localhost:8000/v1/responses \
 ```bash
 # x-api-key 方式（推荐）
 curl http://localhost:8000/v1/messages \
-  -H "x-api-key: sk-dsapi" \
+  -H "x-api-key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "deepseek-default",
@@ -366,7 +380,7 @@ curl http://localhost:8000/v1/messages \
 
 ```bash
 curl http://localhost:8000/v1/messages \
-  -H "x-api-key: sk-dsapi" \
+  -H "x-api-key: YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
     "model": "deepseek-reasoner",
@@ -417,7 +431,7 @@ Claude Code CLI 等工具期望 Anthropic 风格的模型名（如 `claude-sonne
 ```bash
 # 用 Claude 模型名同样可用
 curl http://localhost:8000/v1/messages \
-  -H "x-api-key: sk-dsapi" \
+  -H "x-api-key: YOUR_API_KEY" \
   -d '{"model":"claude-sonnet-4-6","max_tokens":100,"messages":[{"role":"user","content":"hi"}]}'
 ```
 
@@ -615,7 +629,7 @@ curl http://localhost:8000/health
 | 地址 | 说明 |
 |------|------|
 | `http://localhost:8000/admin` | Web 管理后台（登录配置） |
-| `http://localhost:8000/v1` | OpenAI 兼容 API 根路径 |
+| `http://localhost:8000/v1` | OpenAI 兼容 API 根路径（必须携带 API Key）|
 | `http://localhost:8000/health` | 健康检查端点 |
 
 ## 项目结构
@@ -684,6 +698,8 @@ ds-free-api/
 
 **环境变量：** `PROXY_PORT` — 监听端口（默认 `8000`）
 
+**API Key：** 在 `/admin` 的“API 配置”区域生成或设置。Key 保存于本地 `config.json`，该文件已被 `.gitignore` 忽略。
+
 ## 依赖
 
 ### Python（pip）
@@ -736,7 +752,7 @@ A: 如果使用**账号密码登录**配置的，代理会在 401 时自动重�
 A: 通常是 Token 或 Session 过期导致的。DeepSeek 在凭证失效时会把请求降级到 default 模型。解决方法：在管理面板 `http://localhost:8000/admin` 用手机号/邮箱**重新登录**一次即可，登录后自动刷新 Token 和 Session。
 
 **Q: 可以部署到服务器公网访问吗？**
-A: 可以，但建议使用 Nginx 反向代理 + HTTPS + IP 白名单。API Key 不校验（任意值即可），需要通过其他方式控制访问。
+A: 可以，但建议使用 Nginx 反向代理 + HTTPS + IP 白名单。为 `/v1/*` 设置强 API Key，并妥善保管该 Key。
 
 ## 许可与致谢
 

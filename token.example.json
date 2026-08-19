@@ -1,4 +1,5 @@
 {
+  "api_key": "set-a-strong-api-key-before-exposing-v1",
   "token": "",
   "session_id": "",
   "headers": {
